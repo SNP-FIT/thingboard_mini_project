@@ -28,16 +28,31 @@ void callback(char* topic, byte* payload, unsigned int length) {
     return;
   }
 
-  if (!doc["targetTemperature"].isNull()) {
-    targetTemperature = doc["targetTemperature"];
-  }
+  String t = topic;
+  if (t == "v1/devices/me/attributes") {
+    if (!doc["targetTemperature"].isNull()) {
+      targetTemperature = doc["targetTemperature"];
+    }
 
-  if (!doc["targetHumidity"].isNull()) {
-    targetHumidity = doc["targetHumidity"];
-  }
+    if (!doc["targetHumidity"].isNull()) {
+      targetHumidity = doc["targetHumidity"];
+    }
 
-  if (!doc["autoMode"].isNull()) {
-    autoMode = doc["autoMode"];
+    if (!doc["autoMode"].isNull()) {
+      autoMode = doc["autoMode"];
+    }
+  } else if (t.startsWith("v1/devices/me/attributes/response/")) {
+    if (!doc["shared"].isNull()) {
+      if (!doc["shared"]["targetHumidity"].isNull()) {
+        targetHumidity = doc["shared"]["targetHumidity"];
+      }
+      if (!doc["shared"]["targetTemperature"].isNull()) {
+        targetTemperature = doc["shared"]["targetTemperature"];
+      }
+      if (!doc["shared"]["autoMode"].isNull()) {
+        autoMode = doc["shared"]["autoMode"];
+      }
+    }
   }
 }
 
@@ -67,6 +82,12 @@ void setup() {
     Serial.println(buf);
     client.publish("v1/devices/me/attributes", buf);
     client.subscribe("v1/devices/me/attributes");
+    client.subscribe("v1/devices/me/attributes/response/+");
+    JsonDocument doc2;
+    doc2["sharedKeys"] = "targetTemperature,targetHumidity,autoMode";
+    char buf2[160];
+    serializeJson(doc2, buf2);
+    client.publish("v1/devices/me/attributes/request/1", buf2);
   } else {
     Serial.println("Failed");
   }
