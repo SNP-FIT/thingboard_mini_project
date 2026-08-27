@@ -6,10 +6,14 @@
 #include "DHT.h"
 #define DHTPIN 26
 #define DHTTYPE DHT11
+#define RELAY_PUMP 32
+#define RELAY_FAN 33
 
 float targetTemperature = 25;
 float targetHumidity = 60;
 bool autoMode = true;
+
+int pumpState = 0, fanState = 0;
 
 const char* ssid = "BPSQUARE";
 const char* password = "WhoAreYou?";
@@ -23,6 +27,8 @@ DHT dht(DHTPIN, DHTTYPE);
 
 void callback(char* topic, byte* payload, unsigned int length) {
   Serial.println(topic);
+  Serial.write(payload, length);
+  Serial.println("");
   JsonDocument doc;
   if (deserializeJson(doc, payload, length)) {
     return;
@@ -53,6 +59,24 @@ void callback(char* topic, byte* payload, unsigned int length) {
         autoMode = doc["shared"]["autoMode"];
       }
     }
+  } else if (t.startsWith("v1/devices/me/rpc/request/")) {
+    String method = doc["method"].as<String>();
+    String id = t.substring(26);
+    // Serial.println(method);
+    // Serial.println(id);
+    String respTopic = "v1/devices/me/rpc/response/" + id;
+    // Serial.println(respTopic);
+    if (method == "setFan") {
+      fanState = doc["params"];
+      client.publish(respTopic.c_str(), fanState == 0 ? "false" : "true");
+    } else if (method == "setPump") {
+      pumpState = doc["params"];
+      client.publish(respTopic.c_str(), pumpState == 0 ? "false" : "true");
+    } else if (method == "getFan") {
+      client.publish(respTopic.c_str(), fanState == 0 ? "false" : "true");
+    } else if (method == "getPump") {
+      client.publish(respTopic.c_str(), pumpState == 0 ? "false" : "true");
+    }
   }
 }
 
@@ -60,6 +84,8 @@ unsigned long lastRead = 0;
 void setup() {
   // put your setup code here, to run once:
   Serial.begin(115200);
+  pinMode(RELAY_FAN, OUTPUT);
+  pinMode(RELAY_PUMP, OUTPUT);
   dht.begin();
   WiFi.begin(ssid, password);
   while (WiFi.status() != WL_CONNECTED) {
@@ -83,6 +109,7 @@ void setup() {
     client.publish("v1/devices/me/attributes", buf);
     client.subscribe("v1/devices/me/attributes");
     client.subscribe("v1/devices/me/attributes/response/+");
+    client.subscribe("v1/devices/me/rpc/request/+");
     JsonDocument doc2;
     doc2["sharedKeys"] = "targetTemperature,targetHumidity,autoMode";
     char buf2[160];
@@ -108,13 +135,15 @@ void loop() {
     serializeJson(doc, buf);
     client.publish("v1/devices/me/telemetry", buf);
     // Serial.println(buf);
-    Serial.print("targetTemperature = ");
-    Serial.print(targetTemperature);
-    Serial.print("  targetHumidity = ");
-    Serial.print(targetHumidity);
-    Serial.print("  autoMode = ");
-    Serial.println(autoMode);
+    // Serial.print("targetTemperature = ");
+    // Serial.print(targetTemperature);
+    // Serial.print("  targetHumidity = ");
+    // Serial.print(targetHumidity);
+    // Serial.print("  autoMode = ");
+    // Serial.println(autoMode);
     lastRead = millis();
   }
+  digitalWrite(RELAY_FAN, fanState);
+  digitalWrite(RELAY_PUMP, pumpState);
   client.loop();
 }
