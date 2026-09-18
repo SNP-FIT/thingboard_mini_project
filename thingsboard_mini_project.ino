@@ -14,7 +14,8 @@ float targetHumidity = 60;
 bool autoMode = true;
 
 int pumpState = 0, fanState = 0;
-
+int lastPumpState = 0, lastFanState = 0;
+float t, h;
 const char* ssid = "BPSQUARE";
 const char* password = "WhoAreYou?";
 
@@ -24,6 +25,17 @@ WiFiClient espClient;
 PubSubClient client(espClient);
 
 DHT dht(DHTPIN, DHTTYPE);
+
+void publishState() {
+  JsonDocument doc;
+  doc["temperature"] = t;
+  doc["humidity"] = h;
+  doc["pumpState"] = pumpState;
+  doc["fanState"] = fanState;
+  char buf[160];
+  serializeJson(doc, buf);
+  client.publish("v1/devices/me/telemetry", buf);
+}
 
 void callback(char* topic, byte* payload, unsigned int length) {
   Serial.println(topic);
@@ -81,6 +93,7 @@ void callback(char* topic, byte* payload, unsigned int length) {
 }
 
 unsigned long lastRead = 0;
+unsigned long lastPublished = 0;
 void setup() {
   // put your setup code here, to run once:
   Serial.begin(115200);
@@ -122,28 +135,40 @@ void setup() {
 
 void loop() {
   // put your main code here, to run repeatedly:
-  if (millis() - lastRead > 5000) {
-    float t = dht.readTemperature();
-    float h = dht.readHumidity();  // {"temperature":25, "humidity":30}
-    // Serial.println(t);
-    // Serial.println(h);
-    JsonDocument doc;
-    doc["temperature"] = t;
-    doc["humidity"] = h;
+  if (millis() - lastRead > 1000) {
+    t = dht.readTemperature();
+    h = dht.readHumidity();  // {"temperature":25, "humidity":30}
 
-    char buf[160];
-    serializeJson(doc, buf);
-    client.publish("v1/devices/me/telemetry", buf);
-    // Serial.println(buf);
-    // Serial.print("targetTemperature = ");
-    // Serial.print(targetTemperature);
-    // Serial.print("  targetHumidity = ");
-    // Serial.print(targetHumidity);
-    // Serial.print("  autoMode = ");
-    // Serial.println(autoMode);
+    if (autoMode) {
+      if (t > targetTemperature) {
+        fanState = 1;
+        if (h < targetHumidity) {
+          pumpState = 1;
+        } else {
+          pumpState = 0;
+        }
+      } else {
+        fanState = 0;
+        pumpState = 0;
+      }
+    }
+
     lastRead = millis();
   }
+
+  if (millis() - lastPublished > 5000) {
+    publishState();
+    lastPublished = millis();
+  }
+
+  if (lastFanState != fanState || lastPumpState != pumpState) {
+    publishState();
+  }
+
+
   digitalWrite(RELAY_FAN, fanState);
   digitalWrite(RELAY_PUMP, pumpState);
   client.loop();
+  lastFanState = fanState;
+  lastPumpState = pumpState;
 }
