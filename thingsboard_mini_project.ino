@@ -12,6 +12,7 @@
 float targetTemperature = 25;
 float targetHumidity = 60;
 bool autoMode = true;
+bool isTargetValid = false;
 
 int pumpState = 0, fanState = 0;
 int lastPumpState = 0, lastFanState = 0;
@@ -59,6 +60,7 @@ void callback(char* topic, byte* payload, unsigned int length) {
     if (!doc["autoMode"].isNull()) {
       autoMode = doc["autoMode"];
     }
+    isTargetValid = true;
   } else if (t.startsWith("v1/devices/me/attributes/response/")) {
     if (!doc["shared"].isNull()) {
       if (!doc["shared"]["targetHumidity"].isNull()) {
@@ -79,11 +81,15 @@ void callback(char* topic, byte* payload, unsigned int length) {
     String respTopic = "v1/devices/me/rpc/response/" + id;
     // Serial.println(respTopic);
     if (method == "setFan") {
-      fanState = doc["params"];
-      client.publish(respTopic.c_str(), fanState == 0 ? "false" : "true");
+      if (!autoMode) {
+        fanState = doc["params"];
+        client.publish(respTopic.c_str(), fanState == 0 ? "false" : "true");
+      }
     } else if (method == "setPump") {
-      pumpState = doc["params"];
-      client.publish(respTopic.c_str(), pumpState == 0 ? "false" : "true");
+      if (!autoMode) {
+        pumpState = doc["params"];
+        client.publish(respTopic.c_str(), pumpState == 0 ? "false" : "true");
+      }
     } else if (method == "getFan") {
       client.publish(respTopic.c_str(), fanState == 0 ? "false" : "true");
     } else if (method == "getPump") {
@@ -140,16 +146,18 @@ void loop() {
     h = dht.readHumidity();  // {"temperature":25, "humidity":30}
 
     if (autoMode) {
-      if (t > targetTemperature) {
-        fanState = 1;
-        if (h < targetHumidity) {
-          pumpState = 1;
+      if (isTargetValid) {
+        if (t > targetTemperature) {
+          fanState = 1;
+          if (h < targetHumidity) {
+            pumpState = 1;
+          } else {
+            pumpState = 0;
+          }
         } else {
+          fanState = 0;
           pumpState = 0;
         }
-      } else {
-        fanState = 0;
-        pumpState = 0;
       }
     }
 
