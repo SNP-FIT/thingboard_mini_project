@@ -8,6 +8,8 @@
 #define DHTTYPE DHT11
 #define RELAY_PUMP 32
 #define RELAY_FAN 33
+#define BTN_PUMP 36
+#define BTN_FAN 39
 
 float targetTemperature = 25;
 float targetHumidity = 60;
@@ -16,6 +18,9 @@ bool isTargetValid = false;
 
 int pumpState = 0, fanState = 0;
 int lastPumpState = 0, lastFanState = 0;
+
+int lastBtnPump = 1, lastBtnFan = 1;
+
 float t, h;
 const char* ssid = "BPSQUARE";
 const char* password = "WhoAreYou?";
@@ -105,6 +110,8 @@ void setup() {
   Serial.begin(115200);
   pinMode(RELAY_FAN, OUTPUT);
   pinMode(RELAY_PUMP, OUTPUT);
+  pinMode(BTN_PUMP, INPUT);
+  pinMode(BTN_FAN, INPUT);
   dht.begin();
   WiFi.begin(ssid, password);
   while (WiFi.status() != WL_CONNECTED) {
@@ -163,6 +170,22 @@ void loop() {
 
     lastRead = millis();
   }
+
+  if (!autoMode) {
+    int btnPump = digitalRead(BTN_PUMP);
+    if (btnPump == 0 && lastBtnPump == 1) {
+      pumpState = !pumpState;
+    }
+    lastBtnPump = btnPump;
+
+
+    int btnFan = digitalRead(BTN_FAN);
+    if (btnFan == 0 && lastBtnFan == 1) {
+      fanState = !fanState;
+    }
+    lastBtnFan = btnFan;
+  }
+
 
   if (millis() - lastPublished > 5000) {
     publishState();
