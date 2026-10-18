@@ -1,6 +1,10 @@
 #include <WiFi.h>
 #include <PubSubClient.h>
 #include <ArduinoJson.h>
+
+#include <Adafruit_GFX.h>
+#include <Adafruit_ST7789.h>
+
 #define ACCESS_TOKEN "9e1ylY3ArjQ282ijchJP"
 
 #include "DHT.h"
@@ -10,6 +14,10 @@
 #define RELAY_FAN 33
 #define BTN_PUMP 36
 #define BTN_FAN 39
+
+#define TFT_CS 25
+#define TFT_DC 4
+#define TFT_RST 5
 
 float targetTemperature = 25;
 float targetHumidity = 60;
@@ -30,7 +38,31 @@ const char* mqtt_server = "mqtt.thingsboard.cloud";
 WiFiClient espClient;
 PubSubClient client(espClient);
 
+Adafruit_ST7789 tft = Adafruit_ST7789(TFT_CS, TFT_DC, TFT_RST);
+
 DHT dht(DHTPIN, DHTTYPE);
+
+void drawScreen() {
+  tft.setTextColor(ST77XX_WHITE, ST77XX_BLACK);
+  tft.setTextSize(2);
+  tft.setCursor(10, 50);
+  tft.printf("Temp: %5.1f C", t);
+  tft.setCursor(10, 80);
+  tft.printf("Humid: %5.1f %%", h);
+
+  tft.setCursor(10, 120);
+  tft.setTextColor(pumpState == 1 ? ST77XX_GREEN : ST77XX_RED, ST77XX_BLACK);
+  tft.printf("PUMP: %s", pumpState == 1 ? "ON " : "OFF");
+
+  tft.setCursor(170, 120);
+  tft.setTextColor(fanState == 1 ? ST77XX_GREEN : ST77XX_RED, ST77XX_BLACK);
+  tft.printf("FAN: %s", fanState == 1 ? "ON " : "OFF");
+
+  tft.setCursor(10, 150);
+  tft.setTextColor(ST77XX_CYAN, ST77XX_BLACK);
+  tft.setTextSize(1);
+  tft.printf("Mode: %-6s Target : %4.0fC %4.0f%%", autoMode == 1 ? "AUTO":"MANUAL" , targetTemperature , targetHumidity);
+}
 
 void publishState() {
   JsonDocument doc;
@@ -77,6 +109,7 @@ void callback(char* topic, byte* payload, unsigned int length) {
       if (!doc["shared"]["autoMode"].isNull()) {
         autoMode = doc["shared"]["autoMode"];
       }
+      drawScreen();
     }
   } else if (t.startsWith("v1/devices/me/rpc/request/")) {
     String method = doc["method"].as<String>();
@@ -113,6 +146,14 @@ void setup() {
   pinMode(BTN_PUMP, INPUT);
   pinMode(BTN_FAN, INPUT);
   dht.begin();
+  tft.init(172, 320);
+  tft.setRotation(1);
+  tft.fillScreen(ST77XX_BLACK);
+  tft.setTextColor(ST77XX_GREEN);
+  tft.setTextSize(2);
+  tft.setCursor(10, 10);
+  tft.print("EVAP GREENHOUSE");
+  drawScreen();
   WiFi.begin(ssid, password);
   while (WiFi.status() != WL_CONNECTED) {
     delay(500);
@@ -167,7 +208,7 @@ void loop() {
         }
       }
     }
-
+    drawScreen();
     lastRead = millis();
   }
 
@@ -193,6 +234,7 @@ void loop() {
   }
 
   if (lastFanState != fanState || lastPumpState != pumpState) {
+    drawScreen();
     publishState();
   }
 
